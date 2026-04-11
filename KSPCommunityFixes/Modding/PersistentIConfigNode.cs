@@ -1,15 +1,14 @@
 ﻿// - Add support for IConfigNode serialization
 // - Add support for Guid serialization
 // - Rewrite Object reading and writing for perf, clarity, and reuse
-//#define DEBUG_PERSISTENTICONFIGNODE
-using HarmonyLib;
+// #define DEBUG_PERSISTENTICONFIGNODE
+
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using UnityEngine;
 using static ConfigNode;
-using Random = System.Random;
 
 namespace KSPCommunityFixes.Modding
 {
@@ -30,9 +29,9 @@ namespace KSPCommunityFixes.Modding
 
         protected override void ApplyPatches()
         {
-            AddPatch(PatchType.Prefix, typeof(ConfigNode), nameof(ConfigNode.ReadObject), new Type[] { typeof(object), typeof(ConfigNode) });
+            AddPatch(PatchType.Override, typeof(ConfigNode), nameof(ReadObject), new Type[] { typeof(object), typeof(ConfigNode) });
 
-            AddPatch(PatchType.Prefix, typeof(ConfigNode), nameof(ConfigNode.WriteObject), new Type[] { typeof(object), typeof(ConfigNode), typeof(int) });
+            AddPatch(PatchType.Override, typeof(ConfigNode), nameof(WriteObject), new Type[] { typeof(object), typeof(ConfigNode), typeof(int) });
 
             AddPatch(PatchType.Prefix, typeof(ConfigNode), nameof(CreateConfigFromObject), new Type[] { typeof(object), typeof(int), typeof(ConfigNode) });
 
@@ -68,51 +67,25 @@ namespace KSPCommunityFixes.Modding
             readLinks = __state.links;
         }
 
-        // used by TypeCache since we can't make the below method return a value.
-        public static bool WriteSuccess;
-
-        public static bool ConfigNode_WriteObject_Prefix(object obj, ConfigNode node, int pass)
+        private static void ConfigNode_WriteObject_Override(object obj, ConfigNode node, int pass)
         {
-            if (obj is IPersistenceSave persistenceSave)
-                persistenceSave.PersistenceSave();
-
-            Type type = obj.GetType();
-            var typeCache = TypeCache.GetOrCreate(type);
-            if (typeCache == null)
-            {
-                WriteSuccess = false;
-                return false;
-            }
-
-            WriteSuccess = typeCache.Write(obj, node, pass);
-
-            return false;
+            TypeCache.TryWriteObject(obj, node, pass);
         }
 
 
-        public static bool ConfigNode_ReadObject_Prefix(object obj, ConfigNode node, out bool __result)
+        private static bool ConfigNode_ReadObject_Override(object obj, ConfigNode node)
         {
-            Type type = obj.GetType();
-            var typeCache = TypeCache.GetOrCreate(type);
-            if (typeCache == null)
-            {
-                __result = false;
-                return false;
-            }
-
-            bool readResult = typeCache.Read(obj, node);
-
-            if (obj is IPersistenceLoad persistenceLoad)
-            {
-                iPersistentLoaders.Add(persistenceLoad);
-            }
-
-            __result = readResult;
-            return false;
+            TypeCache.TryReadObject(obj, node);
+            return true;
         }
     }
 
-    // This is an expanded version of System.TypeCode
+    /// <summary>
+    /// Expanded version of System.TypeCode
+    /// </summary>
+    /// <remarks>
+    /// This is part of the public modding API for this patch
+    /// </remarks>
     public enum DataType : uint
     {
         INVALID = 0,
@@ -151,6 +124,9 @@ namespace KSPCommunityFixes.Modding
         LastValueType = ValueEnum,
     }
 
+    /// <remarks>
+    /// This is part of the public modding API for this patch
+    /// </remarks>
     public class FieldData
     {
         private static readonly System.Globalization.CultureInfo _Invariant = System.Globalization.CultureInfo.InvariantCulture;
@@ -206,8 +182,8 @@ namespace KSPCommunityFixes.Modding
         {
             if (attribIndex >= attribs.Length)
             {
-                Debug.LogError($"[KSPCommunityFixes] Tried to read value `{value.name} = {value.value}` for field {fieldInfo.Name}, index was {attribIndex} but only {attribs.Length} [Persistent] attributes on that field on host object of type {host.AssemblyQualifiedName()}."
-                    + "\nThis is probably because the value was specified twice in the config. Making that assumption and clamping.");
+                Debug.LogWarning($"[KSPCF] Value `{value.name} = {value.value}` on object `{host.AssemblyQualifiedName()}` is the {attribIndex + 1}nth value read, but only {attribs.Length} [Persistent] attributes are defined. "
+                    + "The value will be applied, but it was likely incorrectly specified twice in the config");
                 attribIndex = 0;
             }
             if (attribs[attribIndex].link)
@@ -237,8 +213,8 @@ namespace KSPCommunityFixes.Modding
         {
             if (attribIndex >= attribs.Length)
             {
-                Debug.LogError($"[KSPCommunityFixes] Tried to read node `{node.name}` for field {fieldInfo.Name}, index was {attribIndex} but only {attribs.Length} [Persistent] attributes on that field on host object of type {host.AssemblyQualifiedName()}."
-                    + "\nThis is probably because the node was specified twice in the config. Making that assumption and clamping.");
+                Debug.LogWarning($"[KSPCF] Node `{node.name}` on object `{host.AssemblyQualifiedName()}` is the {attribIndex + 1}nth node read, but only {attribs.Length} [Persistent] attributes are defined. "
+                    + "The node will be applied, but it was likely incorrectly specified twice in the config");
                 attribIndex = 0;
             }
             int vCount = node._values.values.Count;
@@ -272,7 +248,7 @@ namespace KSPCommunityFixes.Modding
                 }
                 else
                 {
-                    PersistentIConfigNode.ConfigNode_ReadObject_Prefix(existing, node, out bool success);
+                    bool success = TypeCache.TryReadObject(existing, node);
                     if (removeAfterUse)
                         node.name = string.Empty;
                     return success;
@@ -413,10 +389,10 @@ namespace KSPCommunityFixes.Modding
 
                 case DataType.Object:
                 case DataType.Component:
-                    PersistentIConfigNode.ConfigNode_WriteObject_Prefix(value, subNode, pass);
+                    bool success = TypeCache.TryWriteObject(value, subNode, pass);
                     if (subNode.HasData)
                         node._nodes.nodes.Add(subNode);
-                    return PersistentIConfigNode.WriteSuccess;
+                    return success;
             }
             return false;
         }
@@ -446,7 +422,7 @@ namespace KSPCommunityFixes.Modding
                         existing = TypeCache.GetNewInstance(fieldType);
                     if (existing == null)
                         return null;
-                    PersistentIConfigNode.ConfigNode_ReadObject_Prefix(existing, node, out success);
+                    success = TypeCache.TryReadObject(existing, node);
                     return existing;
             }
             return null;
@@ -491,7 +467,7 @@ namespace KSPCommunityFixes.Modding
 
             // We're not reading directly here because the class might have
             // other interfaces/links/etc.
-            PersistentIConfigNode.ConfigNode_ReadObject_Prefix(child, node, out success);
+            success = TypeCache.TryReadObject(child, node);
             return child;
         }
 
@@ -604,7 +580,7 @@ namespace KSPCommunityFixes.Modding
                     {
                         string[] enumNames = fieldType.GetEnumNames();
                         string defaultName = enumNames.Length > 0 ? enumNames[0] : string.Empty;
-                        Debug.LogWarning($"[KSPCF] Couldn't parse value '{value}' for enum '{fieldType.Name}', default value '{defaultName}' will be used.\nValid values are {string.Join(", ", enumNames)}");
+                        Debug.LogWarning($"[KSPCF] Couldn't parse value '{value}' for enum '{fieldType.Name}', default value '{defaultName}' will be used. Valid values are {string.Join(", ", enumNames)}");
                         return null;
                     }
                 case DataType.ValueVector2:
@@ -825,7 +801,7 @@ namespace KSPCommunityFixes.Modding
         }
     }
 
-    public class TypeCache
+    internal class TypeCache
     {
         private static readonly Dictionary<Type, TypeCache> cache = new Dictionary<Type, TypeCache>();
         //private static readonly Dictionary<Type, ConstructorInfo> _typeToConstrutor = new Dictionary<Type, ConstructorInfo>();
@@ -866,6 +842,34 @@ namespace KSPCommunityFixes.Modding
                 numSeen = 0;
             _seenFieldCounts[fieldName] = numSeen + 1;
             return numSeen;
+        }
+
+        public static bool TryWriteObject(object obj, ConfigNode node, int pass)
+        {
+            if (obj is IPersistenceSave persistenceSave)
+                persistenceSave.PersistenceSave();
+
+            Type type = obj.GetType();
+            TypeCache typeCache = GetOrCreate(type);
+            if (typeCache == null)
+                return false;
+
+            return typeCache.Write(obj, node, pass);
+        }
+
+        public static bool TryReadObject(object obj, ConfigNode node)
+        {
+            Type type = obj.GetType();
+            TypeCache typeCache = GetOrCreate(type);
+            if (typeCache == null)
+                return false;
+
+            bool readResult = typeCache.Read(obj, node);
+
+            if (obj is IPersistenceLoad persistenceLoad)
+                iPersistentLoaders.Add(persistenceLoad);
+
+            return readResult;
         }
 
         public bool Read(object host, ConfigNode node)
@@ -952,7 +956,7 @@ namespace KSPCommunityFixes.Modding
             var tc = new TypeCache(t);
             if (tc._fields.Count == 0)
             {
-                Debug.LogError($"[KSPCommunityFixes]: No Persistent fields on object of type {t.Name} that is referenced in persistent field, adding as null to TypeCache.");
+                Debug.LogWarning($"[KSPCF] No Persistent fields on object of type {t.AssemblyQualifiedName()}, adding as null to TypeCache. That object likely shouldn't implement the IConfigNode interface.");
                 tc = null;
             }
 

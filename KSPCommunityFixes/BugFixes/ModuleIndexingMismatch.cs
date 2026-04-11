@@ -28,7 +28,7 @@ namespace KSPCommunityFixes
     {
         private const string VALUENAME_MODULEPARTCONFIGID = "modulePartConfigId";
         private static readonly HashSet<string> multiModules = new HashSet<string>();
-
+		private static readonly Dictionary<string, Type> allModuleTypes = new Dictionary<string, Type>();
         protected override Version VersionMin => new Version(1, 8, 0);
 
         protected override void ApplyPatches()
@@ -45,19 +45,30 @@ namespace KSPCommunityFixes
             }
             AddPatch(PatchType.Transpiler, typeof(ShipConstruct), "LoadShip", new Type[] { typeof(ConfigNode), typeof(uint), typeof(bool), typeof(string).MakeByRefType() });
 
-            Type partModuleType = typeof(PartModule);
             Type multiModuleType = typeof(IMultipleModuleInPart);
 
             // note : do not use AppDomain.CurrentDomain.GetAssemblies(), as in case some plugin was missing
             // a reference, that missing reference assembly will be included even though it is invalid, leading
             // to a ReflectionTypeLoadException when doing anything with it such as calling GetTypes()
+
+            // note: it's important that this logic mirrors AssemblyLoader.GetTypeByName since that is what's
+            // used to instantiate a PartModule from a cfg file.
             foreach (AssemblyLoader.LoadedAssembly loadedAssembly in AssemblyLoader.loadedAssemblies)
             {
-                foreach (Type type in loadedAssembly.assembly.GetTypes())
+                var partModules = loadedAssembly.types.GetValueOrDefault(typeof(PartModule));
+
+                if (partModules == null) continue;
+
+                foreach (Type type in partModules)
                 {
-                    if (multiModuleType.IsAssignableFrom(type) && partModuleType.IsAssignableFrom(type))
+                    if (allModuleTypes.TryAdd(type.Name, type))
                     {
-                        multiModules.Add(type.Name);
+                        if (multiModuleType.IsAssignableFrom(type))
+                            multiModules.Add(type.Name);
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"[KSPCF:ModuleIndexingMismatch] Found additional PartModule named '{type.Name}' in assembly '{loadedAssembly.assembly.GetName().Name}'.  Original was in '{allModuleTypes[type.Name].Assembly.GetName().Name}'");
                     }
                 }
             }
@@ -195,6 +206,20 @@ namespace KSPCommunityFixes
 
             return code;
         }
+		
+		/// <summary>
+        /// Our own version of ProtoPartModuleSnapshot.Load(). We reimplement it because :
+        /// - Stock would do again all the indice / module matching that we just did
+        /// - That stock logic would prevent our handling of loading derived into base / base into derived modules.
+        /// </summary>
+        private static void LoadProtoPartSnapshotModule(ProtoPartModuleSnapshot protoModule, PartModule module)
+        {
+            GameEvents.onProtoPartModuleSnapshotLoad.Fire(new GameEvents.FromToAction<ProtoPartModuleSnapshot, ConfigNode>(protoModule, null));
+            module.Load(protoModule.moduleValues);
+            module.snapshot = protoModule;
+            protoModule.moduleRef = module;
+        }
+
 
         static void LoadModules(ProtoPartSnapshot protoPart, Part part)
         {
@@ -245,7 +270,7 @@ namespace KSPCommunityFixes
 
                     }
 
-                    protoPart.modules[i].Load(part, ref moduleIndex);
+                    LoadProtoPartSnapshotModule(protoPart.modules[i], part.modules[moduleIndex]);
                 }
                 return;
             }
@@ -253,9 +278,9 @@ namespace KSPCommunityFixes
             Debug.LogWarning($"[KSPCF:ModuleIndexingMismatch] Part \"{protoPart.partName}\" configuration has changed. Synchronizing persisted modules...");
             ProtoPartModuleSnapshot[] foundModules = new ProtoPartModuleSnapshot[partModuleCount];
 
-            for (int i = 0; i < protoModuleCount; i++)
+            for (int protoModuleIdx = 0; protoModuleIdx < protoModuleCount; protoModuleIdx++)
             {
-                ProtoPartModuleSnapshot protoModule = protoPart.modules[i];
+                ProtoPartModuleSnapshot protoModule = protoPart.modules[protoModuleIdx];
 
                 if (multiModules.Contains(protoModule.moduleName))
                 {
@@ -264,16 +289,15 @@ namespace KSPCommunityFixes
                     if (!string.IsNullOrEmpty(protoModuleId))
                     {
                         bool multiFound = false;
-                        for (int j = 0; j < partModuleCount; j++)
+                        for (int moduleIdx = 0; moduleIdx < partModuleCount; moduleIdx++)
                         {
-                            if (part.Modules[j] is IMultipleModuleInPart multiModule && multiModule.ModulePartConfigId == protoModuleId)
+                            if (part.Modules[moduleIdx] is IMultipleModuleInPart multiModule && multiModule.ModulePartConfigId == protoModuleId)
                             {
-                                int moduleIndex = j;
-                                protoModule.Load(part, ref moduleIndex);
-                                foundModules[j] = protoModule;
+                                LoadProtoPartSnapshotModule(protoPart.modules[protoModuleIdx], part.modules[moduleIdx]);
+                                foundModules[moduleIdx] = protoModule;
 
-                                if (i != j)
-                                    Debug.LogWarning($"[KSPCF:ModuleIndexingMismatch] Persisted module \"{protoModule.moduleName}\" with {VALUENAME_MODULEPARTCONFIGID}={protoModuleId} at index [{i}] moved to index [{j}]");
+                                if (protoModuleIdx != moduleIdx)
+                                    Debug.LogWarning($"[KSPCF:ModuleIndexingMismatch] Persisted module \"{protoModule.moduleName}\" with {VALUENAME_MODULEPARTCONFIGID}={protoModuleId} at index [{protoModuleIdx}] moved to index [{moduleIdx}]");
 
                                 multiFound = true;
                                 break;
@@ -281,10 +305,9 @@ namespace KSPCommunityFixes
                         }
 
                         if (!multiFound)
-                            Debug.LogWarning($"[KSPCF:ModuleIndexingMismatch] Persisted module \"{protoModule.moduleName}\" with {VALUENAME_MODULEPARTCONFIGID}={protoModuleId} at index [{i}] has been removed, no matching module in the part config");
+                            Debug.LogWarning($"[KSPCF:ModuleIndexingMismatch] Persisted module \"{protoModule.moduleName}\" with {VALUENAME_MODULEPARTCONFIGID}={protoModuleId} at index [{protoModuleIdx}] has been removed, no matching module in the part config");
                     }
                 }
-
 
                 int protoIndexInType = 0;
                 foreach (ProtoPartModuleSnapshot otherppms in protoPart.modules)
@@ -300,18 +323,17 @@ namespace KSPCommunityFixes
 
                 int prefabIndexInType = 0;
                 bool found = false;
-                for (int j = 0; j < partModuleCount; j++)
+                for (int moduleIdx = 0; moduleIdx < partModuleCount; moduleIdx++)
                 {
-                    if (part.Modules[j].moduleName == protoModule.moduleName)
+                    if (part.Modules[moduleIdx].moduleName == protoModule.moduleName)
                     {
                         if (prefabIndexInType == protoIndexInType)
                         {
-                            int moduleIndex = j;
-                            protoModule.Load(part, ref moduleIndex);
-                            foundModules[j] = protoModule;
+                            LoadProtoPartSnapshotModule(protoPart.modules[protoModuleIdx], part.modules[moduleIdx]);
+                            foundModules[moduleIdx] = protoModule;
 
-                            if (i != j)
-                                Debug.LogWarning($"[KSPCF:ModuleIndexingMismatch] Persisted module \"{protoModule.moduleName}\" at index [{i}] moved to index [{j}]");
+                            if (protoModuleIdx != moduleIdx)
+                                Debug.LogWarning($"[KSPCF:ModuleIndexingMismatch] Persisted module \"{protoModule.moduleName}\" at index [{protoModuleIdx}] moved to index [{moduleIdx}]");
 
                             found = true;
                             break;
@@ -322,7 +344,21 @@ namespace KSPCommunityFixes
                 }
 
                 if (!found)
-                    Debug.LogWarning($"[KSPCF:ModuleIndexingMismatch] Persisted module \"{protoModule.moduleName}\" at index [{i}] has been removed, no matching module in the part config");
+                {
+                    // see https://github.com/KSPModdingLibs/KSPCommunityFixes/issues/236
+                    // when persisted type is a derived type of the module type, or when the module type is a derived type of the persisted type, still attempt to load it.
+                    if (protoModuleIdx < partModuleCount && allModuleTypes.TryGetValue(protoModule.moduleName, out Type moduleType) 
+                        && (part.Modules[protoModuleIdx].GetType().IsAssignableFrom(moduleType) || moduleType.IsInstanceOfType(part.Modules[protoModuleIdx])))
+                    {
+                        LoadProtoPartSnapshotModule(protoPart.modules[protoModuleIdx], part.modules[protoModuleIdx]);
+                        foundModules[protoModuleIdx] = protoModule;
+                        Debug.LogWarning($"[KSPCF:ModuleIndexingMismatch] Persisted module \"{protoModule.moduleName}\" at index [{protoModuleIdx}] has been loaded as a \"{part.Modules[protoModuleIdx].moduleName}\"");
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"[KSPCF:ModuleIndexingMismatch] Persisted module \"{protoModule.moduleName}\" at index [{protoModuleIdx}] has been removed, no matching module in the part config");
+                    }
+                }
             }
 
             for (int i = 0; i < partModuleCount; i++)
@@ -450,18 +486,21 @@ namespace KSPCommunityFixes
                 if (compNode.name == "MODULE")
                     currentModuleNodes.Add(compNode);
 
-            int nodeModuleCount = currentModuleNodes.Count;
+            int moduleNodeCount = currentModuleNodes.Count;
 
-            string[] nodeModuleNames = new string[nodeModuleCount];
-            for (int i = 0; i < nodeModuleCount; i++)
-                nodeModuleNames[i] = currentModuleNodes[i].GetValue("name");
+            string[] nodeModuleNames = new string[moduleNodeCount];
+            for (int i = 0; i < moduleNodeCount; i++)
+            {
+                string moduleName = currentModuleNodes[i].GetValue("name") ?? string.Empty;
+                nodeModuleNames[i] = moduleName;
+            }
 
             int partModuleCount = part.Modules.Count;
-            bool inSync = nodeModuleCount == partModuleCount;
+            bool inSync = moduleNodeCount == partModuleCount;
 
             if (inSync)
             {
-                for (int i = 0; i < nodeModuleCount; i++)
+                for (int i = 0; i < moduleNodeCount; i++)
                 {
                     if (part.Modules[i].moduleName != nodeModuleNames[i])
                     {
@@ -473,7 +512,7 @@ namespace KSPCommunityFixes
 
             if (inSync)
             {
-                for (int i = 0; i < nodeModuleCount; i++)
+                for (int i = 0; i < moduleNodeCount; i++)
                 {
                     int moduleIndex = i;
 
@@ -502,7 +541,7 @@ namespace KSPCommunityFixes
 
                     }
 
-                    part.LoadModule(currentModuleNodes[i], ref moduleIndex);
+                    part.Modules[moduleIndex].Load(currentModuleNodes[i]);
                 }
                 return;
             }
@@ -510,28 +549,27 @@ namespace KSPCommunityFixes
             Debug.LogWarning($"[KSPCF:ModuleIndexingMismatch] Part \"{part.partInfo.name}\" configuration has changed. Synchronizing persisted modules...");
             ConfigNode[] foundModules = new ConfigNode[partModuleCount];
 
-            for (int i = 0; i < nodeModuleCount; i++)
+            for (int moduleNodeIdx = 0; moduleNodeIdx < moduleNodeCount; moduleNodeIdx++)
             {
-                ConfigNode nodeModule = currentModuleNodes[i];
-                string nodeModuleName = nodeModuleNames[i];
+                ConfigNode moduleNode = currentModuleNodes[moduleNodeIdx];
+                string nodeModuleName = nodeModuleNames[moduleNodeIdx];
 
                 if (multiModules.Contains(nodeModuleName))
                 {
-                    string nodeModuleId = nodeModule.GetValue(VALUENAME_MODULEPARTCONFIGID);
+                    string nodeModuleId = moduleNode.GetValue(VALUENAME_MODULEPARTCONFIGID);
 
                     if (!string.IsNullOrEmpty(nodeModuleId))
                     {
                         bool multiFound = false;
-                        for (int j = 0; j < partModuleCount; j++)
+                        for (int moduleIdx = 0; moduleIdx < partModuleCount; moduleIdx++)
                         {
-                            if (part.Modules[j] is IMultipleModuleInPart multiModule && multiModule.ModulePartConfigId == nodeModuleId)
+                            if (part.Modules[moduleIdx] is IMultipleModuleInPart multiModule && multiModule.ModulePartConfigId == nodeModuleId)
                             {
-                                int moduleIndex = j;
-                                part.LoadModule(nodeModule, ref moduleIndex);
-                                foundModules[j] = nodeModule;
+                                part.Modules[moduleIdx].Load(moduleNode);
+                                foundModules[moduleIdx] = moduleNode;
 
-                                if (i != j)
-                                    Debug.LogWarning($"[KSPCF:ModuleIndexingMismatch] Persisted module \"{nodeModuleName}\" with {VALUENAME_MODULEPARTCONFIGID}={nodeModuleId} at index [{i}] moved to index [{j}]");
+                                if (moduleNodeIdx != moduleIdx)
+                                    Debug.LogWarning($"[KSPCF:ModuleIndexingMismatch] Persisted module \"{nodeModuleName}\" with {VALUENAME_MODULEPARTCONFIGID}={nodeModuleId} at index [{moduleNodeIdx}] moved to index [{moduleIdx}]");
 
                                 multiFound = true;
                                 break;
@@ -539,17 +577,17 @@ namespace KSPCommunityFixes
                         }
 
                         if (!multiFound)
-                            Debug.LogWarning($"[KSPCF:ModuleIndexingMismatch] Persisted module \"{nodeModuleName}\" with {VALUENAME_MODULEPARTCONFIGID}={nodeModuleId} at index [{i}] has been removed, no matching module in the part config");
+                            Debug.LogWarning($"[KSPCF:ModuleIndexingMismatch] Persisted module \"{nodeModuleName}\" with {VALUENAME_MODULEPARTCONFIGID}={nodeModuleId} at index [{moduleNodeIdx}] has been removed, no matching module in the part config");
                     }
                 }
 
 
                 int nodeIndexInType = 0;
-                for (int j = 0; j < nodeModuleCount; j++)
+                for (int j = 0; j < moduleNodeCount; j++)
                 {
                     if (nodeModuleNames[j] == nodeModuleName)
                     {
-                        if (currentModuleNodes[j] == nodeModule)
+                        if (currentModuleNodes[j] == moduleNode)
                             break;
 
                         nodeIndexInType++;
@@ -558,18 +596,17 @@ namespace KSPCommunityFixes
 
                 int prefabIndexInType = 0;
                 bool found = false;
-                for (int j = 0; j < partModuleCount; j++)
+                for (int moduleIdx = 0; moduleIdx < partModuleCount; moduleIdx++)
                 {
-                    if (part.Modules[j].moduleName == nodeModuleName)
+                    if (part.Modules[moduleIdx].moduleName == nodeModuleName)
                     {
                         if (prefabIndexInType == nodeIndexInType)
                         {
-                            int moduleIndex = j;
-                            part.LoadModule(nodeModule, ref moduleIndex);
-                            foundModules[j] = nodeModule;
+                            part.Modules[moduleIdx].Load(moduleNode);
+                            foundModules[moduleIdx] = moduleNode;
 
-                            if (i != j)
-                                Debug.LogWarning($"[KSPCF:ModuleIndexingMismatch] Persisted module \"{nodeModuleName}\" at index [{i}] moved to index [{j}]");
+                            if (moduleNodeIdx != moduleIdx)
+                                Debug.LogWarning($"[KSPCF:ModuleIndexingMismatch] Persisted module \"{nodeModuleName}\" at index [{moduleNodeIdx}] moved to index [{moduleIdx}]");
 
                             found = true;
                             break;
@@ -580,7 +617,22 @@ namespace KSPCommunityFixes
                 }
 
                 if (!found)
-                    Debug.LogWarning($"[KSPCF:ModuleIndexingMismatch] Persisted module \"{nodeModuleName}\" at index [{i}] has been removed, no matching module in the part config");
+                {
+                    // see https://github.com/KSPModdingLibs/KSPCommunityFixes/issues/236
+                    // when persisted type is a derived type of the module type, or when the module type is a derived type of the persisted type, still attempt to load it.
+                    if (moduleNodeIdx < partModuleCount 
+                        && allModuleTypes.TryGetValue(nodeModuleName, out Type moduleType)
+                        && (part.Modules[moduleNodeIdx].GetType().IsAssignableFrom(moduleType) || moduleType.IsInstanceOfType(part.Modules[moduleNodeIdx])))
+                    {
+                        part.Modules[moduleNodeIdx].Load(moduleNode);
+                        foundModules[moduleNodeIdx] = moduleNode;
+                        Debug.LogWarning($"[KSPCF:ModuleIndexingMismatch] Persisted module \"{nodeModuleName}\" at index [{moduleNodeIdx}] has been loaded as a \"{part.Modules[moduleNodeIdx].moduleName}\"");
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"[KSPCF:ModuleIndexingMismatch] Persisted module \"{nodeModuleName}\" at index [{moduleNodeIdx}] has been removed, no matching module in the part config");
+                    }
+                }
             }
 
             for (int i = 0; i < partModuleCount; i++)

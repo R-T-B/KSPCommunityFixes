@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <Import Project="..\packages\Krafs.Publicizer.2.2.1\build\Krafs.Publicizer.props" Condition="Exists('..\packages\Krafs.Publicizer.2.2.1\build\Krafs.Publicizer.props')" />
   <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
@@ -10,7 +10,7 @@
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>KSPCommunityFixes</RootNamespace>
     <AssemblyName>KSPCommunityFixes</AssemblyName>
-    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.8.1</TargetFrameworkVersion>
     <LangVersion>8.0</LangVersion>
     <FileAlignment>512</FileAlignment>
     <Deterministic>true</Deterministic>
@@ -18,6 +18,7 @@
     <DisableFastUpToDateCheck>true</DisableFastUpToDateCheck>
     <NuGetPackageImportStamp>
     </NuGetPackageImportStamp>
+    <TargetFrameworkProfile />
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -30,7 +31,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-    <DebugType>portable</DebugType>
+    <DebugType>none</DebugType>
     <Optimize>true</Optimize>
     <OutputPath>bin\Release\</OutputPath>
     <DefineConstants>TRACE</DefineConstants>
@@ -80,6 +81,10 @@
       <Name>Assembly-CSharp-firstpass</Name>
       <Private>False</Private>
     </Reference>
+    <Reference Include="$(ManagedPath)\KSPAssets.dll">
+      <Name>KSPAssets</Name>
+      <Private>False</Private>
+    </Reference>
     <Reference Include="$(ProjectDir)\lib\0Harmony.dll">
       <Name>Harmony</Name>
       <Private>False</Private>
@@ -93,12 +98,14 @@
   <ItemGroup>
     <Publicize Include="Assembly-CSharp" />
     <Publicize Include="Assembly-CSharp-firstpass" />
+    <Publicize Include="KSPAssets" />
     <DoNotPublicize Include="Assembly-CSharp:BaseField`1.OnValueModified" />
     <DoNotPublicize Include="Assembly-CSharp:SaveUpgradePipeline.SaveUpgradePipeline.OnSetCfgNodeVersion" />
     <Publicize Include="UnityEngine.CoreModule:UnityEngine.Object.m_CachedPtr" />
     <Publicize Include="UnityEngine.CoreModule:UnityEngine.Object.GetOffsetOfInstanceIDInCPlusPlusObject" />
     <Publicize Include="UnityEngine.IMGUIModule" />
     <Publicize Include="UnityEngine.CoreModule:Unity.Collections.NativeArray`1.m_Buffer" />
+    <Publicize Include="mscorlib:System.Runtime.CompilerServices.Unsafe" />
     <Publicize Include="mscorlib:System.IO.MonoIO" />
     <Publicize Include="mscorlib:System.IO.MonoIOError" />
     <Publicize Include="mscorlib:System.IO.MonoIOStat" />
@@ -126,8 +133,11 @@
     <Compile Include="BugFixes\AsteroidInfiniteMining.cs" />
     <Compile Include="BugFixes\ChutePhantomSymmetry.cs" />
     <Compile Include="BugFixes\CorrectDragForFlags.cs" />
+    <Compile Include="BugFixes\DebugConsoleDontStealInput.cs" />
+    <Compile Include="BugFixes\WheelInertiaLimit.cs" />
     <Compile Include="BugFixes\DragCubeLoadException.cs" />
     <Compile Include="BugFixes\EVAConstructionMass.cs" />
+    <Compile Include="BugFixes\FastAndFixedEnumExtensions.cs" />
     <Compile Include="BugFixes\InventoryPartMass.cs" />
     <Compile Include="BugFixes\ModuleActiveRadiatorNoParentException.cs" />
     <Compile Include="BugFixes\ModulePartVariantsNodePersistence.cs" />
@@ -155,13 +165,22 @@
     <Compile Include="Library\LocalizationUtils.cs" />
     <Compile Include="Library\Numerics.cs" />
     <Compile Include="Library\ObjectPool.cs" />
+    <Compile Include="Library\MuParser.cs" />
+    <Compile Include="Library\ShaderHelpers.cs" />
     <Compile Include="Modding\KSPFieldEnumDesc.cs" />
     <Compile Include="Modding\ModUpgradePipeline.cs" />
+    <Compile Include="Performance\CraftBrowserOptimisations.cs" />
+    <Compile Include="Modding\BaseFieldListUseFieldHost.cs" />
+    <Compile Include="Performance\ExpansionBundlePreload.cs" />
+    <Compile Include="Performance\FasterEditorPartList.cs" />
     <Compile Include="Performance\ForceSyncSceneSwitch.cs" />
     <Compile Include="Performance\AsteroidAndCometDrillCache.cs" />
     <Compile Include="BugFixes\DoubleCurvePreserveTangents.cs" />
     <Compile Include="BugFixes\RestoreMaxPhysicsDT.cs" />
     <Compile Include="Performance\FloatingOriginPerf.cs" />
+    <Compile Include="Performance\ModuleColorChangerOptimization.cs" />
+    <Compile Include="Performance\OptimisedVectorLines.cs" />
+    <Compile Include="Performance\GameDatabasePerf.cs" />
     <Compile Include="Performance\PartSystemsFastUpdate.cs" />
     <Compile Include="Performance\CollisionEnhancerFastUpdate.cs" />
     <Compile Include="Performance\CollisionManagerFastUpdate.cs" />
@@ -173,6 +192,7 @@
     <Compile Include="Performance\FasterPartFindTransform.cs" />
     <Compile Include="Performance\FastLoader.cs" />
     <Compile Include="Performance\FlightIntegratorPerf.cs" />
+    <Compile Include="Performance\PartParsingPerf.cs" />
     <Compile Include="Performance\IMGUIOptimization.cs" />
     <Compile Include="Performance\LocalizerPerf.cs" />
     <Compile Include="Performance\LowerMinPhysicsDTPerFrame.cs" />
@@ -209,11 +229,13 @@
     <Compile Include="Performance\ModuleDockingNodeFindOtherNodesFaster.cs" />
     <Compile Include="Performance\OptimizedModuleRaycasts.cs" />
     <Compile Include="Performance\PQSCoroutineLeak.cs" />
+    <Compile Include="Performance\PQSOnlyStartOnce.cs" />
     <Compile Include="Performance\PQSUpdateNoMemoryAlloc.cs" />
     <Compile Include="Performance\ProgressTrackingSpeedBoost.cs" />
     <Compile Include="QoL\AutostrutActions.cs" />
     <Compile Include="QoL\BetterEditorUndoRedo.cs" />
     <Compile Include="QoL\OptionalMakingHistoryDLCFeatures.cs" />
+    <Compile Include="QoL\TargetParentBody.cs" />
     <Compile Include="QoL\ToolbarShowHide.cs" />
     <Compile Include="QoL\DisableNewGameIntro.cs" />
     <Compile Include="QoL\NoIVA.cs" />
@@ -254,6 +276,7 @@
   <ItemGroup>
     <None Include="packages.config" />
   </ItemGroup>
+  <ItemGroup />
   <!--Project-specfic configuration-->
   <PropertyGroup>
     <RepoRootPath>$(SolutionDir)</RepoRootPath>
@@ -319,6 +342,7 @@
     </ItemGroup>
     <Copy SourceFiles="@(BinariesToCopy)" DestinationFolder="$(PublishBinariesPath)" />
     <Copy SourceFiles="$(RepoRootPath)\README.md" DestinationFolder="$(PublishPluginRootPath)" />
+    <Copy SourceFiles="$(RepoRootPath)\CHANGELOG.md" DestinationFolder="$(PublishPluginRootPath)" />
     <GetAVCVersion Path="$(RepoRootPath)\GameData\$(GameDataFolderName)\$(AVCFilename)">
       <Output PropertyName="AVCVersionMajor" TaskParameter="Major" />
       <Output PropertyName="AVCVersionMinor" TaskParameter="Minor" />
