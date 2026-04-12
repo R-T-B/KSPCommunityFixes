@@ -411,29 +411,60 @@ namespace KSPCommunityFixes
             }
             else
             {
-                for (int i = 0; i < code.Count - 5; i++)
+                try
                 {
-                    //// part.LoadModule(configNode2, ref moduleIndex);
-                    // ldloc.s 6
-                    // ldloc.3
-                    // ldloca.s 39
-                    // callvirt instance class PartModule Part::LoadModule(class ConfigNode, int32&)
-                    // pop
-                    // br
-                    if (code[i].opcode == OpCodes.Ldloc_S
-                        && code[i + 1].opcode == OpCodes.Ldloc_3
-                        && code[i + 2].opcode == OpCodes.Ldloca_S
-                        && code[i + 3].opcode == OpCodes.Callvirt && ReferenceEquals(code[i + 3].operand, Part_LoadModule)
-                        && code[i + 4].opcode == OpCodes.Pop
-                        && code[i + 5].opcode == OpCodes.Br)
+                    for (int i = 0; i < code.Count - 5; i++)
                     {
-                        originalFound = true;
-                        for (int j = i; j < i + 6; j++)
+                        //// part.LoadModule(configNode2, ref moduleIndex);
+                        // ldloc.s 6
+                        // ldloc.3
+                        // ldloca.s 39
+                        // callvirt instance class PartModule Part::LoadModule(class ConfigNode, int32&)
+                        // pop
+                        // br
+                        if (code[i].opcode == OpCodes.Ldloc_S
+                            && code[i + 1].opcode == OpCodes.Ldloc_3
+                            && code[i + 2].opcode == OpCodes.Ldloca_S
+                            && code[i + 3].opcode == OpCodes.Callvirt && ReferenceEquals(code[i + 3].operand, Part_LoadModule)
+                            && code[i + 4].opcode == OpCodes.Pop)
                         {
-                            code[j].opcode = OpCodes.Nop;
-                            code[j].operand = null;
+                            originalFound = true;
+                            for (int j = i; j < i + 6; j++)
+                            {
+                                code[j].opcode = OpCodes.Nop;
+                                code[j].operand = null;
+                            }
+                            break;
                         }
-                        break;
+                    }
+                }
+                catch
+                {
+                    code = new List<CodeInstruction>(instructions);
+                    for (int i = 0; i < code.Count - 5; i++)
+                    {
+                        //// part.LoadModule(configNode2, ref moduleIndex);
+                        // ldloc.s 6
+                        // ldloc.3
+                        // ldloca.s 39
+                        // callvirt instance class PartModule Part::LoadModule(class ConfigNode, int32&)
+                        // pop
+                        // br
+                        if (code[i].opcode == OpCodes.Ldloc_S
+                            && code[i + 1].opcode == OpCodes.Ldloc_3
+                            && code[i + 2].opcode == OpCodes.Ldloca_S
+                            && code[i + 3].opcode == OpCodes.Callvirt && ReferenceEquals(code[i + 3].operand, Part_LoadModule)
+                            && code[i + 4].opcode == OpCodes.Pop
+                            && code[i + 5].opcode == OpCodes.Br)
+                        {
+                            originalFound = true;
+                            for (int j = i; j < i + 6; j++)
+                            {
+                                code[j].opcode = OpCodes.Nop;
+                                code[j].operand = null;
+                            }
+                            break;
+                        }
                     }
                 }
             }
