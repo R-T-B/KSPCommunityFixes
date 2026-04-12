@@ -426,7 +426,8 @@ namespace KSPCommunityFixes
                             && code[i + 1].opcode == OpCodes.Ldloc_3
                             && code[i + 2].opcode == OpCodes.Ldloca_S
                             && code[i + 3].opcode == OpCodes.Callvirt && ReferenceEquals(code[i + 3].operand, Part_LoadModule)
-                            && code[i + 4].opcode == OpCodes.Pop)
+                            && code[i + 4].opcode == OpCodes.Pop
+                            && code[i + 4].opcode == OpCodes.Br)
                         {
                             originalFound = true;
                             for (int j = i; j < i + 6; j++)
@@ -455,7 +456,7 @@ namespace KSPCommunityFixes
                             && code[i + 2].opcode == OpCodes.Ldloca_S
                             && code[i + 3].opcode == OpCodes.Callvirt && ReferenceEquals(code[i + 3].operand, Part_LoadModule)
                             && code[i + 4].opcode == OpCodes.Pop
-                            && code[i + 5].opcode == OpCodes.Br)
+                            && code[i + 5].opcode == OpCodes.Br_S)
                         {
                             originalFound = true;
                             for (int j = i; j < i + 6; j++)
