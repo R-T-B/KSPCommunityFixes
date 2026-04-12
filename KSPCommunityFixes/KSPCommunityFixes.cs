@@ -52,6 +52,35 @@ namespace KSPCommunityFixes
             }
         }
 
+        public static bool cleanedDll
+        {
+            get
+            {
+                String dllPath = "";
+                if (Application.platform == RuntimePlatform.WindowsPlayer)
+                {
+                    dllPath = KSPUtil.ApplicationRootPath + "KSP_x64_Data/Managed/Assembly-CSharp.dll";
+                }
+                else if (Application.platform == RuntimePlatform.OSXPlayer)
+                {
+                    dllPath = KSPUtil.ApplicationRootPath + "KSP.app/Contents/Resources/Data/Managed/Assembly-CSharp.dll";
+                }
+                else if (Application.platform == RuntimePlatform.LinuxPlayer)
+                {
+                    dllPath = KSPUtil.ApplicationRootPath + "KSP_Data/Managed/Assembly-CSharp.dll";
+                }
+                if (File.Exists(dllPath))
+                {
+                    Byte[] data = File.ReadAllBytes(dllPath);
+                    if ((data.Length < 10485760) && (KSPCommunityFixes.KspVersion >= new Version(1, 12, 0)))
+                    {
+                        return true; //certainly a home-cleaned dll, no official 1.12.x build of Assembly-CSharp is less than 10MBs.
+                    }
+                }
+                return false;
+            }
+        }
+
         static KSPCommunityFixes()
         {
             Harmony = new Harmony("KSPCommunityFixes");

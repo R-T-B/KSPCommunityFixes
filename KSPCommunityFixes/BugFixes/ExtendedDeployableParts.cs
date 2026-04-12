@@ -23,7 +23,14 @@ namespace KSPCommunityFixes.BugFixes
         {
             AddPatch(PatchType.Transpiler, typeof(ModuleDeployablePart), nameof(ModuleDeployablePart.startFSM));
 
-            AddPatch(PatchType.Transpiler, typeof(ModuleDeployableSolarPanel), nameof(ModuleDeployablePart.OnStart));
+            if (!KSPCommunityFixes.cleanedDll)
+            {
+                AddPatch(PatchType.Transpiler, typeof(ModuleDeployableSolarPanel), nameof(ModuleDeployablePart.OnStart));
+            }
+            else
+            {
+                AddPatch(PatchType.Prefix, typeof(ModuleDeployableSolarPanel), nameof(ModuleDeployablePart.OnStart));
+            }
         }
 
         static IEnumerable<CodeInstruction> ModuleDeployablePart_startFSM_Transpiler(IEnumerable<CodeInstruction> instructions)
@@ -90,11 +97,10 @@ namespace KSPCommunityFixes.BugFixes
             FieldInfo ModuleDeployablePart_deployState = AccessTools.Field(typeof(ModuleDeployablePart), nameof(ModuleDeployablePart.deployState));
 
             List<CodeInstruction> code = new List<CodeInstruction>(instructions);
-
             for (int i = 0; i < code.Count; i++)
             {
                 if (code[i].opcode == OpCodes.Ldarg_0
-                    && code[i + 1].opcode == OpCodes.Ldfld && ReferenceEquals(code[i+1].operand, ModuleDeployablePart_deployState)
+                    && code[i + 1].opcode == OpCodes.Ldfld && ReferenceEquals(code[i + 1].operand, ModuleDeployablePart_deployState)
                     && code[i + 2].opcode == OpCodes.Brtrue_S)
                 {
                     code[i].opcode = OpCodes.Br_S;
@@ -104,6 +110,37 @@ namespace KSPCommunityFixes.BugFixes
             }
 
             return code;
+        }
+        static bool ModuleDeployableSolarPanel_OnStart_Prefix(ModuleDeployableSolarPanel __instance, PartModule.StartState state)
+        {
+            if (!HighLogic.LoadedSceneIsEditor && !HighLogic.LoadedSceneIsFlight)
+            {
+                return false;
+            }
+            GameEvents.onPartRepaired.Add(new EventData<Part>.OnEvent(__instance.OnPartRepaired));
+            __instance.Fields["flowRate"].guiFormat = __instance.flowFormat;
+            __instance.Fields["flowRate"].guiUnits = (__instance.flowUnitsUseSpace ? " " : "") + __instance.flowUnits;
+            __instance.OnStart(state);
+            if (__instance.secondaryTransform == null)
+            {
+                Debug.LogError("Couldn't access secondaryTransform for raycasts");
+            }
+            if (__instance.useRaycastForTrackingDot)
+            {
+                __instance.trackingDotTransform = __instance.secondaryTransform;
+            }
+            else
+            {
+                __instance.trackingDotTransform = __instance.panelRotationTransform;
+            }
+            if (HighLogic.LoadedSceneIsFlight && __instance.anim != null)
+            {
+                float num = ((__instance.deployState == ModuleDeployablePart.DeployState.EXTENDED) ? 1f : 0f);
+                __instance.anim[__instance.animationName].normalizedTime = num;
+                __instance.anim[__instance.animationName].enabled = true;
+                __instance.anim[__instance.animationName].weight = 1f;
+            }
+            return false;
         }
     }
 }

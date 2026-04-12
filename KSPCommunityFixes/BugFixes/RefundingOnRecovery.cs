@@ -1,8 +1,10 @@
-﻿using System;
+﻿using HarmonyLib;
+using KSP.UI.Screens;
+using KSP.UI.Screens.SpaceCenter.MissionSummaryDialog;
+using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Reflection.Emit;
-using HarmonyLib;
 
 namespace KSPCommunityFixes.BugFixes
 {
@@ -56,7 +58,14 @@ namespace KSPCommunityFixes.BugFixes
 
         protected override void ApplyPatches()
         {
-            AddPatch(PatchType.Transpiler, typeof(Funding), "onVesselRecoveryProcessing");
+            if (!KSPCommunityFixes.cleanedDll)
+            {
+                AddPatch(PatchType.Transpiler, typeof(Funding), "onVesselRecoveryProcessing");
+            }
+            else
+            {
+                AddPatch(PatchType.Prefix, typeof(Funding), "onVesselRecoveryProcessing");
+            }
 
             moduleInventoryPartDerivatives.Clear();
             moduleInventoryPartDerivatives.Add(nameof(ModuleInventoryPart));
@@ -119,11 +128,77 @@ namespace KSPCommunityFixes.BugFixes
             return code;
         }
 
+        static bool Funding_onVesselRecoveryProcessing_Prefix(Funding __instance, ProtoVessel pv, MissionRecoveryDialog mrDialog, float recoveryScore)
+        {
+            if (pv == null)
+            {
+                return false;
+            }
+            bool flag = mrDialog != null;
+            double num = 0.0;
+            List<ProtoPartSnapshot> allProtoPartsIncludingCargo = pv.GetAllProtoPartsIncludingCargo();
+            for (int i = 0; i < allProtoPartsIncludingCargo.Count; i++)
+            {
+                ProtoPartSnapshot protoPartSnapshot = allProtoPartsIncludingCargo[i];
+                AvailablePart availablePart = null;
+                if (protoPartSnapshot.partInfo == null)
+                {
+                    if (!string.IsNullOrEmpty(protoPartSnapshot.partName))
+                    {
+                        availablePart = PartLoader.getPartInfoByName(protoPartSnapshot.partName);
+                    }
+                }
+                else
+                {
+                    availablePart = protoPartSnapshot.partInfo;
+                }
+                if (availablePart != null)
+                {
+                    float num2;
+                    float num3;
+                    ShipConstruction.GetPartCosts(protoPartSnapshot, true, availablePart, out num2, out num3);
+                    num2 *= recoveryScore;
+                    num3 *= recoveryScore;
+                    num += (double)(num2 + num3);
+                    if (flag)
+                    {
+                        if (!string.Equals(availablePart.name, "kerbalEVA"))
+                        {
+                            mrDialog.AddPartWidget(PartWidget.Create(availablePart, num2, num3, mrDialog));
+                        }
+                        for (int j = 0; j < protoPartSnapshot.resources.Count; j++)
+                        {
+                            ProtoPartResourceSnapshot protoPartResourceSnapshot = protoPartSnapshot.resources[j];
+                            PartResourceDefinition definition = PartResourceLibrary.Instance.GetDefinition(protoPartResourceSnapshot.resourceName);
+                            if (definition != null)
+                            {
+                                mrDialog.AddResourceWidget(ResourceWidget.Create(definition, (float)protoPartResourceSnapshot.amount, definition.unitCost * recoveryScore, mrDialog));
+                            }
+                            else
+                            {
+                                UnityEngine.Debug.LogError("[ShipTemplate]: No Resource definition found for " + protoPartResourceSnapshot.resourceName);
+                            }
+                        }
+                    }
+                }
+                else if (flag)
+                {
+                    UnityEngine.Debug.Log("[Funding]: Cannot recover " + protoPartSnapshot.partName + ". Part has no entry in PartLoader catalog. That is only OK if the part is an EVA.");
+                }
+            }
+            if (flag)
+            {
+                mrDialog.fundsEarned = num;
+            }
+            __instance.AddFunds(num, TransactionReasons.VesselRecovery);
+            return false;
+        }
+
 
         // Derived from the ModuleInventoryPart.OnLoad() code, get stored parts cost
         static float GetStoredPartsCosts(ProtoPartSnapshot protoPart)
         {
-            ConstructorInfo storedPartCtor = AccessTools.Constructor(typeof(StoredPart), new[] {typeof(ConfigNode)});
+            ConstructorInfo storedPartCtor = AccessTools.Constructor(typeof(StoredPart), new[] { typeof(ConfigNode) });
 
             float cost = 0f;
             foreach (ProtoPartModuleSnapshot protoModule in protoPart.modules)
