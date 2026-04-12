@@ -452,7 +452,7 @@ namespace KSPCommunityFixes
                         // pop
                         // br
                         if (code[i].opcode == OpCodes.Ldloc_S
-                            && code[i + 1].opcode == OpCodes.Ldloc_3
+                            && code[i + 1].opcode == OpCodes.Ldloc_S
                             && code[i + 2].opcode == OpCodes.Ldloca_S
                             && code[i + 3].opcode == OpCodes.Callvirt && ReferenceEquals(code[i + 3].operand, Part_LoadModule)
                             && code[i + 4].opcode == OpCodes.Pop
