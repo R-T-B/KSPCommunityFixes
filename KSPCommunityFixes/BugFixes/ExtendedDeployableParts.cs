@@ -21,15 +21,15 @@ namespace KSPCommunityFixes.BugFixes
 
         protected override void ApplyPatches()
         {
-            AddPatch(PatchType.Transpiler, typeof(ModuleDeployablePart), nameof(ModuleDeployablePart.startFSM));
-
             if (!KSPCommunityFixes.IsCleanedDll)
             {
                 AddPatch(PatchType.Transpiler, typeof(ModuleDeployableSolarPanel), nameof(ModuleDeployablePart.OnStart));
+                AddPatch(PatchType.Transpiler, typeof(ModuleDeployablePart), nameof(ModuleDeployablePart.startFSM));
             }
             else
             {
                 AddPatch(PatchType.Prefix, typeof(ModuleDeployableSolarPanel), nameof(ModuleDeployablePart.OnStart));
+                AddPatch(PatchType.Prefix, typeof(ModuleDeployablePart), nameof(ModuleDeployablePart.startFSM));
             }
         }
 
@@ -111,6 +111,86 @@ namespace KSPCommunityFixes.BugFixes
 
             return code;
         }
+
+        static bool ModuleDeployablePart_startFSM_Prefix(ModuleDeployableSolarPanel __instance)
+        {
+            if (__instance.useAnimation)
+            {
+                __instance.anim[__instance.animationName].wrapMode = WrapMode.ClampForever;
+                switch (__instance.deployState)
+                {
+                    case ModuleDeployablePart.DeployState.RETRACTED:
+                        __instance.anim[__instance.animationName].normalizedTime = 0f;
+                        __instance.anim[__instance.animationName].enabled = true;
+                        __instance.anim[__instance.animationName].weight = 1f;
+                        __instance.anim[__instance.animationName].speed = 0f;
+                        __instance.bypassSetupAnimation = true;
+                        __instance.Events["Retract"].active = false;
+                        __instance.Events["Extend"].active = true;
+                        break;
+                    case ModuleDeployablePart.DeployState.EXTENDED:
+                        __instance.anim[__instance.animationName].normalizedTime = 1f;
+                        __instance.anim[__instance.animationName].enabled = true;
+                        __instance.anim[__instance.animationName].speed = 0f;
+                        __instance.anim[__instance.animationName].weight = 1f;
+                        __instance.Events["Extend"].active = false;
+                        __instance.Events["Retract"].active = __instance.retractable || HighLogic.LoadedSceneIsEditor;
+                        if (__instance.hasPivot)
+                        {
+                            __instance.panelRotationTransform.localRotation = __instance.currentRotation;
+                        }
+                        break;
+                    case ModuleDeployablePart.DeployState.RETRACTING:
+                        __instance.Events["Retract"].active = false;
+                        __instance.Events["Extend"].active = false;
+                        break;
+                    case ModuleDeployablePart.DeployState.EXTENDING:
+                        __instance.Events["Retract"].active = false;
+                        __instance.Events["Extend"].active = false;
+                        break;
+                }
+                if (__instance.deployState == ModuleDeployablePart.DeployState.RETRACTING || __instance.deployState == ModuleDeployablePart.DeployState.EXTENDING || __instance.deployState == ModuleDeployablePart.DeployState.BROKEN)
+                {
+                    __instance.anim[__instance.animationName].normalizedTime = __instance.storedAnimationTime;
+                    __instance.anim[__instance.animationName].speed = __instance.storedAnimationSpeed;
+                }
+                if (!__instance.bypassSetupAnimation)
+                {
+                    __instance.anim.Play(__instance.animationName);
+                }
+                if (!__instance.playAnimationOnStart && __instance.deployState != ModuleDeployablePart.DeployState.EXTENDING && __instance.deployState != ModuleDeployablePart.DeployState.RETRACTING)
+                {
+                    __instance.stopAnimation = true;
+                }
+            }
+            else
+            {
+                if (__instance.hasPivot)
+                {
+                    __instance.panelRotationTransform.localRotation = __instance.originalRotation;
+                }
+                if (__instance.deployState != ModuleDeployablePart.DeployState.BROKEN)
+                {
+                    __instance.deployState = ModuleDeployablePart.DeployState.EXTENDED;
+                }
+                __instance.Events["Retract"].active = false;
+                __instance.Events["Extend"].active = false;
+                __instance.Actions["ExtendPanelsAction"].active = false;
+                __instance.Actions["ExtendAction"].active = false;
+                __instance.Actions["RetractAction"].active = false;
+                __instance.Fields["status"].guiActiveEditor = false;
+            }
+            if (__instance.deployState == ModuleDeployablePart.DeployState.BROKEN)
+            {
+                __instance.Events["Retract"].active = false;
+                __instance.Events["Extend"].active = false;
+                if (__instance.panelBreakTransform)
+                {
+                    __instance.panelBreakTransform.gameObject.SetActive(false);
+                }
+            }
+            return false;
+        }
         static bool ModuleDeployableSolarPanel_OnStart_Prefix(ModuleDeployableSolarPanel __instance, PartModule.StartState state)
         {
             if (!HighLogic.LoadedSceneIsEditor && !HighLogic.LoadedSceneIsFlight)
@@ -139,7 +219,6 @@ namespace KSPCommunityFixes.BugFixes
                 __instance.anim[__instance.animationName].normalizedTime = num;
                 __instance.anim[__instance.animationName].enabled = true;
                 __instance.anim[__instance.animationName].weight = 1f;
-                __instance.anim.Stop(__instance.animationName);
             }
             return false;
         }
