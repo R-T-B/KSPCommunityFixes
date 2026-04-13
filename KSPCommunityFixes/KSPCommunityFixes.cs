@@ -72,7 +72,7 @@ namespace KSPCommunityFixes
                 if (File.Exists(dllPath))
                 {
                     Byte[] data = File.ReadAllBytes(dllPath);
-                    if ((data.Length < 10485760) && (KSPCommunityFixes.KspVersion >= new Version(1, 12, 0)))
+                    if ((data.Length < 10000000) && (KSPCommunityFixes.KspVersion >= new Version(1, 12, 0)))
                     {
                         return true; //certainly a home-cleaned dll, no official 1.12.x build of Assembly-CSharp is less than 10MBs.
                     }
