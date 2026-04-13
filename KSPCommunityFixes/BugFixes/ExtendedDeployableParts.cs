@@ -139,6 +139,7 @@ namespace KSPCommunityFixes.BugFixes
                 __instance.anim[__instance.animationName].normalizedTime = num;
                 __instance.anim[__instance.animationName].enabled = true;
                 __instance.anim[__instance.animationName].weight = 1f;
+                __instance.anim.Stop(__instance.animationName);
             }
             return false;
         }
