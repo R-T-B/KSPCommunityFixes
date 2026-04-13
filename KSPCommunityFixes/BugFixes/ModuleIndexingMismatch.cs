@@ -472,17 +472,9 @@ namespace KSPCommunityFixes
                 Debug.LogError($"Error applying ModuleIndexingMismatch patch : couldn't find Part.LoadModule() call in ShipConstruct.LoadShip()");
                 return instructions;
             }
-            uint minusCount;
-            if (!KSPCommunityFixes.cleanedDll)
-            {
-                minusCount = 6;
-            }
-            else
-            {
-                minusCount = 5;
-            }
-                // then, insert our own module loading call before the original part nodes parsing loop
-                for (int i = 0; i < code.Count - minusCount; i++)
+
+            // then, insert our own module loading call before the original part nodes parsing loop
+            for (int i = 0; i < code.Count - 6; i++)
             {
                 //// int moduleIndex = 0;
                 // ldc.i4.0 NULL
