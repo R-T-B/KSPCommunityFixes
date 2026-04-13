@@ -52,32 +52,27 @@ namespace KSPCommunityFixes
             }
         }
 
-        public static bool cleanedDll
+        //returns true if KSP Assembly-CSharp is probably a cleaned/deobfuscated image
+        private static bool? cleanedDllCachedValue = null;
+        public static bool IsCleanedDll
         {
             get
             {
-                String dllPath = "";
-                if (Application.platform == RuntimePlatform.WindowsPlayer)
+                if (cleanedDllCachedValue != null)
                 {
-                    dllPath = KSPUtil.ApplicationRootPath + "KSP_x64_Data/Managed/Assembly-CSharp.dll";
+                    return (bool)cleanedDllCachedValue;
                 }
-                else if (Application.platform == RuntimePlatform.OSXPlayer)
+                else
                 {
-                    dllPath = KSPUtil.ApplicationRootPath + "KSP.app/Contents/Resources/Data/Managed/Assembly-CSharp.dll";
-                }
-                else if (Application.platform == RuntimePlatform.LinuxPlayer)
-                {
-                    dllPath = KSPUtil.ApplicationRootPath + "KSP_Data/Managed/Assembly-CSharp.dll";
-                }
-                if (File.Exists(dllPath))
-                {
-                    Byte[] data = File.ReadAllBytes(dllPath);
-                    if ((data.Length < 10000000) && (KSPCommunityFixes.KspVersion >= new Version(1, 12, 0)))
+                    String dllPath = typeof(GameDatabase).Assembly.Location;
+                    if ((new FileInfo(dllPath).Length < 10000000) && Versioning.version_minor.Equals(12))
                     {
+                        cleanedDllCachedValue = true;
                         return true; //certainly a home-cleaned dll, no official 1.12.x build of Assembly-CSharp is less than 10MBs.
                     }
+                    cleanedDllCachedValue = false;
+                    return false;
                 }
-                return false;
             }
         }
 

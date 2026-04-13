@@ -58,7 +58,7 @@ namespace KSPCommunityFixes.BugFixes
 
         protected override void ApplyPatches()
         {
-            if (!KSPCommunityFixes.cleanedDll)
+            if (!KSPCommunityFixes.IsCleanedDll)
             {
                 AddPatch(PatchType.Transpiler, typeof(Funding), "onVesselRecoveryProcessing");
             }

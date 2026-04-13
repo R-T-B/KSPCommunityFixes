@@ -23,7 +23,7 @@ namespace KSPCommunityFixes.BugFixes
         {
             AddPatch(PatchType.Transpiler, typeof(ModuleDeployablePart), nameof(ModuleDeployablePart.startFSM));
 
-            if (!KSPCommunityFixes.cleanedDll)
+            if (!KSPCommunityFixes.IsCleanedDll)
             {
                 AddPatch(PatchType.Transpiler, typeof(ModuleDeployableSolarPanel), nameof(ModuleDeployablePart.OnStart));
             }

@@ -379,7 +379,7 @@ namespace KSPCommunityFixes
             // first, remove the original module load call
             bool originalFound = false;
 
-            if (!KSPCommunityFixes.cleanedDll)
+            if (!KSPCommunityFixes.IsCleanedDll)
             {
                 for (int i = 0; i < code.Count - 6; i++)
                 {
