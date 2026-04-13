@@ -21,16 +21,8 @@ namespace KSPCommunityFixes.BugFixes
 
         protected override void ApplyPatches()
         {
-            if (!KSPCommunityFixes.IsCleanedDll)
-            {
-                AddPatch(PatchType.Transpiler, typeof(ModuleDeployableSolarPanel), nameof(ModuleDeployablePart.OnStart));
-                AddPatch(PatchType.Transpiler, typeof(ModuleDeployablePart), nameof(ModuleDeployablePart.startFSM));
-            }
-            else
-            {
-                AddPatch(PatchType.Prefix, typeof(ModuleDeployableSolarPanel), nameof(ModuleDeployablePart.OnStart));
-                AddPatch(PatchType.Prefix, typeof(ModuleDeployablePart), nameof(ModuleDeployablePart.startFSM));
-            }
+            AddPatch(PatchType.Transpiler, typeof(ModuleDeployablePart), nameof(ModuleDeployablePart.startFSM));
+            AddPatch(PatchType.Transpiler, typeof(ModuleDeployableSolarPanel), nameof(ModuleDeployablePart.OnStart));
         }
 
         static IEnumerable<CodeInstruction> ModuleDeployablePart_startFSM_Transpiler(IEnumerable<CodeInstruction> instructions)
@@ -95,21 +87,45 @@ namespace KSPCommunityFixes.BugFixes
             // We remove that entire if statement by replacing the if (Brtrue_S) by an unconditional jump (Br_S)
 
             FieldInfo ModuleDeployablePart_deployState = AccessTools.Field(typeof(ModuleDeployablePart), nameof(ModuleDeployablePart.deployState));
-
-            List<CodeInstruction> code = new List<CodeInstruction>(instructions);
-            for (int i = 0; i < code.Count; i++)
+            if (!KSPCommunityFixes.IsCleanedDll)
             {
-                if (code[i].opcode == OpCodes.Ldarg_0
-                    && code[i + 1].opcode == OpCodes.Ldfld && ReferenceEquals(code[i + 1].operand, ModuleDeployablePart_deployState)
-                    && code[i + 2].opcode == OpCodes.Brtrue_S)
+                List<CodeInstruction> code = new List<CodeInstruction>(instructions);
+                for (int i = 0; i < code.Count; i++)
                 {
-                    code[i].opcode = OpCodes.Br_S;
-                    code[i].operand = code[i + 2].operand; // grab the target instruction from the original jump
-                    break;
+                    if (code[i].opcode == OpCodes.Ldarg_0
+                        && code[i + 1].opcode == OpCodes.Ldfld && ReferenceEquals(code[i + 1].operand, ModuleDeployablePart_deployState)
+                        && code[i + 2].opcode == OpCodes.Brtrue_S)
+                    {
+                        code[i].opcode = OpCodes.Br_S;
+                        code[i].operand = code[i + 2].operand; // grab the target instruction from the original jump
+                        break;
+                    }
                 }
-            }
 
-            return code;
+                return code;
+            }
+            else
+            {
+                List<CodeInstruction> code = new List<CodeInstruction>(instructions);
+                for (int i = 0; i < code.Count; i++)
+                {
+                    if (code[i].opcode == OpCodes.Ldarg_0
+                        && code[i + 1].opcode == OpCodes.Ldfld
+                        && code[i + 2].opcode == OpCodes.Ldarg_0
+                        && code[i + 3].opcode == OpCodes.Ldfld
+                        && code[i + 4].opcode == OpCodes.Callvirt)
+                    {
+                        code[i].opcode = OpCodes.Nop;
+                        code[i + 1].opcode = OpCodes.Nop;
+                        code[i + 2].opcode = OpCodes.Nop;
+                        code[i + 3].opcode = OpCodes.Nop;
+                        code[i + 4].opcode = OpCodes.Nop; // change call to stop to nop, no idea why this works and the other doesn't in cleaned dlls
+                        break;
+                    }
+                }
+
+                return code;
+            }
         }
 
         static bool ModuleDeployablePart_startFSM_Prefix(ModuleDeployableSolarPanel __instance)
@@ -188,37 +204,6 @@ namespace KSPCommunityFixes.BugFixes
                 {
                     __instance.panelBreakTransform.gameObject.SetActive(false);
                 }
-            }
-            return false;
-        }
-        static bool ModuleDeployableSolarPanel_OnStart_Prefix(ModuleDeployableSolarPanel __instance, PartModule.StartState state)
-        {
-            if (!HighLogic.LoadedSceneIsEditor && !HighLogic.LoadedSceneIsFlight)
-            {
-                return false;
-            }
-            GameEvents.onPartRepaired.Add(new EventData<Part>.OnEvent(__instance.OnPartRepaired));
-            __instance.Fields["flowRate"].guiFormat = __instance.flowFormat;
-            __instance.Fields["flowRate"].guiUnits = (__instance.flowUnitsUseSpace ? " " : "") + __instance.flowUnits;
-            __instance.OnStart(state);
-            if (__instance.secondaryTransform == null)
-            {
-                Debug.LogError("Couldn't access secondaryTransform for raycasts");
-            }
-            if (__instance.useRaycastForTrackingDot)
-            {
-                __instance.trackingDotTransform = __instance.secondaryTransform;
-            }
-            else
-            {
-                __instance.trackingDotTransform = __instance.panelRotationTransform;
-            }
-            if (HighLogic.LoadedSceneIsFlight && __instance.anim != null)
-            {
-                float num = ((__instance.deployState == ModuleDeployablePart.DeployState.EXTENDED) ? 1f : 0f);
-                __instance.anim[__instance.animationName].normalizedTime = num;
-                __instance.anim[__instance.animationName].enabled = true;
-                __instance.anim[__instance.animationName].weight = 1f;
             }
             return false;
         }
