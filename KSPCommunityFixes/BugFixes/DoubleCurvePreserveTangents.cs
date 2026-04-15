@@ -17,7 +17,7 @@ namespace KSPCommunityFixes.BugFixes
             }
             else
             {
-                AddPatch(PatchType.Prefix, typeof(DoubleCurve), nameof(DoubleCurve.RecomputeTangents));
+                AddPatch(PatchType.Override, typeof(DoubleCurve), nameof(DoubleCurve.RecomputeTangents));
             }
         }
 
@@ -45,13 +45,13 @@ namespace KSPCommunityFixes.BugFixes
             return code;
         }
 
-        static bool DoubleCurve_RecomputeTangents_Prefix(DoubleCurve __instance)
+        static void DoubleCurve_RecomputeTangents_Override(DoubleCurve __instance)
         {
             int count = __instance.keys.Count;
             DoubleKeyframe doubleKeyframe;
             if (count == 1)
             {
-                return false;
+                return;
             }
             doubleKeyframe = __instance.keys[0];
             if (doubleKeyframe.autoTangent)
@@ -81,7 +81,7 @@ namespace KSPCommunityFixes.BugFixes
                     }
                 }
             }
-            return false;
+            return;
         }
     }
 }

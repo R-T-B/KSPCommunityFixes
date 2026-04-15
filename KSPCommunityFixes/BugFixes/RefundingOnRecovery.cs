@@ -64,7 +64,7 @@ namespace KSPCommunityFixes.BugFixes
             }
             else
             {
-                AddPatch(PatchType.Prefix, typeof(Funding), "onVesselRecoveryProcessing");
+                AddPatch(PatchType.Override, typeof(Funding), "onVesselRecoveryProcessing");
             }
 
             moduleInventoryPartDerivatives.Clear();
@@ -128,11 +128,11 @@ namespace KSPCommunityFixes.BugFixes
             return code;
         }
 
-        static bool Funding_onVesselRecoveryProcessing_Prefix(Funding __instance, ProtoVessel pv, MissionRecoveryDialog mrDialog, float recoveryScore)
+        static void Funding_onVesselRecoveryProcessing_Override(Funding __instance, ProtoVessel pv, MissionRecoveryDialog mrDialog, float recoveryScore)
         {
             if (pv == null)
             {
-                return false;
+                return;
             }
             bool flag = mrDialog != null;
             double num = 0.0;
@@ -191,7 +191,7 @@ namespace KSPCommunityFixes.BugFixes
                 mrDialog.fundsEarned = num;
             }
             __instance.AddFunds(num, TransactionReasons.VesselRecovery);
-            return false;
+            return;
         }
 
 
