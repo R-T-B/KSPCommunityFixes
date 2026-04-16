@@ -1,4 +1,5 @@
-﻿using HarmonyLib;
+﻿using CommNet.Network;
+using HarmonyLib;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
@@ -84,48 +85,26 @@ namespace KSPCommunityFixes.BugFixes
             //    anim.Stop(animationName);
             //}
 
-            // We remove that entire if statement by replacing the if (Brtrue_S) by an unconditional jump (Br_S)
+            // We remove that entire if statement by making the if (Brtrue_S) unconditional
 
             FieldInfo ModuleDeployablePart_deployState = AccessTools.Field(typeof(ModuleDeployablePart), nameof(ModuleDeployablePart.deployState));
-            if (!KSPCommunityFixes.IsCleanedDll)
-            {
-                List<CodeInstruction> code = new List<CodeInstruction>(instructions);
-                for (int i = 0; i < code.Count; i++)
-                {
-                    if (code[i].opcode == OpCodes.Ldarg_0
-                        && code[i + 1].opcode == OpCodes.Ldfld && ReferenceEquals(code[i + 1].operand, ModuleDeployablePart_deployState)
-                        && code[i + 2].opcode == OpCodes.Brtrue_S)
-                    {
-                        code[i].opcode = OpCodes.Br_S;
-                        code[i].operand = code[i + 2].operand; // grab the target instruction from the original jump
-                        break;
-                    }
-                }
 
-                return code;
-            }
-            else
-            {
-                List<CodeInstruction> code = new List<CodeInstruction>(instructions);
-                for (int i = 0; i < code.Count; i++)
-                {
-                    if (code[i].opcode == OpCodes.Ldarg_0
-                        && code[i + 1].opcode == OpCodes.Ldfld
-                        && code[i + 2].opcode == OpCodes.Ldarg_0
-                        && code[i + 3].opcode == OpCodes.Ldfld
-                        && code[i + 4].opcode == OpCodes.Callvirt)
-                    {
-                        code[i].opcode = OpCodes.Nop;
-                        code[i + 1].opcode = OpCodes.Nop;
-                        code[i + 2].opcode = OpCodes.Nop;
-                        code[i + 3].opcode = OpCodes.Nop;
-                        code[i + 4].opcode = OpCodes.Nop; // change call to stop to nop, no idea why this works and the other doesn't in cleaned dlls
-                        break;
-                    }
-                }
+            var matcher = new CodeMatcher(instructions);
+            matcher
+                .MatchStartForward(
+                    new CodeMatch(OpCodes.Ldarg_0),
+                    new CodeMatch(OpCodes.Ldfld, ModuleDeployablePart_deployState),
+                    new CodeMatch(OpCodes.Brtrue_S)
+                );
 
-                return code;
-            }
+            if (!matcher.IsValid)
+                return matcher.Instructions();
+
+            matcher
+                .RemoveInstructions(2)
+                .Insert(new CodeInstruction(OpCodes.Ldc_I4_1));
+
+            return matcher.Instructions();
         }
 
         static bool ModuleDeployablePart_startFSM_Prefix(ModuleDeployableSolarPanel __instance)
